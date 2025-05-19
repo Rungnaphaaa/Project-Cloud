@@ -1,24 +1,21 @@
 pipeline {
     agent any
     stages {
-        stage('Clone') {
+        stage('Build Frontend and Services') {
             steps {
-                echo "Cloning repo..."
+                sh 'docker-compose build frontend user-service recipe-service rating-service favorite-service api-gateway reverse-proxy'
             }
         }
-        stage('Build') {
+
+        stage('Start Containers') {
             steps {
-                echo "Building project..."
+                sh 'docker-compose up -d frontend user-service recipe-service rating-service favorite-service api-gateway reverse-proxy'
             }
         }
-        stage('Test') {
+
+        stage('Check Status') {
             steps {
-                echo "Running tests..."
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo "Deploying..."
+                sh 'docker ps'
             }
         }
     }
