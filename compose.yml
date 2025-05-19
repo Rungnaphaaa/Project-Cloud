@@ -188,33 +188,17 @@ services:
       - ./frontend:/app
       - /app/node_modules 
 
-  # jenkins:
-  #   build: ./jenkins
-  #   image: jenkins
-  #   container_name: jenkins
-  #   ports:
-  #     - "8081:8080"
-  #     - "50000:50000"
-  #   volumes:
-  #     - jenkins_home:/var/jenkins_home
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   restart: unless-stopped
-
-  # docker-compose.yml
-
   jenkins:
     build: ./jenkins
+    image: jenkins
     container_name: jenkins
     ports:
-      - "8080:8080"
+      - "8081:8080"
       - "50000:50000"
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
-    environment:
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    user: root # เพิ่มเพื่อให้ Jenkins เข้าถึง docker.sock ได้โดยตรง
 
   api-gateway:
     build: ./api-gateway
