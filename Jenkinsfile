@@ -1,6 +1,5 @@
 pipeline {
     agent any
-
     stages {
         stage('Build Frontend and Services') {
             steps {
