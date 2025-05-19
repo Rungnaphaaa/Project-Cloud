@@ -9,8 +9,7 @@ RUN apt-get update && apt-get install -y docker.io curl gnupg
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs
 
-# ติดตั้ง Firebase CLI
-RUN npm install -g firebase-tools
+RUN apt-get update && apt-get install -y docker.io docker-compose
 
 # ให้ Jenkins ใช้ Docker ได้
 RUN usermod -aG docker jenkins
