@@ -1,11 +1,6 @@
 pipeline {
-    agent {
-        docker {
-            image 'docker/compose:latest'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
-    
+    agent any
+
     stages {
         stage('Build Frontend and Services') {
             steps {
