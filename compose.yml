@@ -1,0 +1,224 @@
+networks:
+  webproxy:
+    name: webproxy
+    driver: bridge
+  microservice:
+    name: microservice
+    driver: bridge
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    networks:
+      - microservice
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    networks:
+      - microservice
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    # ports:
+    #   - "9090:9090"
+    expose:
+      - "9090"
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    networks:
+      - microservice
+    # ports:
+    #   - "3000:3000"
+    expose:
+      - "3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana.ini:/etc/grafana/grafana.ini:ro
+
+  user-db:
+    image: postgres:13
+    container_name: user-db
+    restart: always
+    networks:
+      - microservice
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - user-data:/var/lib/postgresql/data
+      - ./user-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./profile_image:/app/profile_image
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    restart: always
+    networks:
+      - microservice
+    depends_on:
+      - user-db
+      - rabbitmq
+    ports:
+      - "5001:5001"
+
+  recipe-db:
+    image: postgres:13
+    container_name: recipe-db
+    restart: always
+    networks:
+      - microservice
+    environment:
+      POSTGRES_DB: recipe_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./food_image:/app/food_image
+      - recipe-data:/var/lib/postgresql/data
+      - ./recipe-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  recipe-service:
+    build: ./recipe-service
+    container_name: recipe-service
+    restart: always
+    networks:
+      - microservice
+    depends_on:
+      - recipe-db
+      - rabbitmq
+    ports:
+      - "5002:5002"
+
+  rating-db:
+    image: postgres:13
+    container_name: rating-db
+    restart: always
+    networks:
+      - microservice
+    environment:
+      POSTGRES_DB: rating_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - rating-data:/var/lib/postgresql/data
+      - ./rating-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  rating-service:
+    build: ./rating-service
+    container_name: rating-service
+    restart: always
+    networks:
+      - microservice
+    depends_on:
+      - rating-db
+      - rabbitmq
+    ports:
+      - "5003:5003"
+
+  favorite-db:
+    image: postgres:13
+    container_name: favorite-db
+    restart: always
+    networks:
+      - microservice
+    environment:
+      POSTGRES_DB: favorite_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - favorite-data:/var/lib/postgresql/data
+      - ./favorite-service/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  favorite-service:
+    build: ./favorite-service
+    container_name: favorite-service
+    restart: always
+    networks:
+      - microservice
+    depends_on:
+      - favorite-db
+      - rabbitmq
+    ports:
+      - "5004:5004"
+
+  reverse-proxy:
+    build: ./reverse-proxy
+    container_name: reverse-proxy
+    restart: always
+    networks:
+      - webproxy
+      - microservice
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    depends_on:
+      - user-service
+      - recipe-service
+      - favorite-service
+      - rating-service
+      - rabbitmq
+    networks:
+      - webproxy
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules 
+
+  jenkins:
+    build: ./jenkins
+    image: jenkins
+    container_name: jenkins
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    restart: always
+    networks:
+      - microservice
+      - webproxy
+    depends_on:
+      - user-service
+      - recipe-service
+      - rating-service
+      - favorite-service
+      - rabbitmq
+
+volumes:
+  user-data:
+  recipe-data:
+  rating-data:
+  favorite-data:
+  rabbitmq_data:
+  grafana_data:
+  jenkins_home:
