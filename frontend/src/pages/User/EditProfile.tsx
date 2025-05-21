@@ -2,23 +2,39 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { fetchUserById, updateUser, uploadProfileImage } from '../../api/userApi';
 import type { User } from '../../interfaces/IUsers';
-import { User as UserIcon, X, Menu, Star, Camera, Save, ChevronLeft } from 'lucide-react';
+import {
+    User as UserIcon,
+    X,
+    Menu,
+    Star,
+    Camera,
+    Save,
+    ChevronLeft,
+    Trash2,
+    Upload,
+    CheckCircle,
+    AlertCircle
+} from 'lucide-react';
+
+const API = import.meta.env.VITE_API_URL;
 
 export default function EditProfile() {
     const { userID } = useParams();
     const navigate = useNavigate();
-    const [, setUser] = useState<User | null>(null);
+    const [_user, setUser] = useState<User | null>(null);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [bio, setBio] = useState('');
-    const [, setProfileImage] = useState<string | null>(null);
+    const [profileImage, setProfileImage] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const footerRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     useEffect(() => {
@@ -31,7 +47,7 @@ export default function EditProfile() {
                 setEmail(data.email || '');
                 setBio(data.bio || '');
                 setProfileImage(data.profile_image_url || null);
-                setPreviewImage(data.profile_image_url || null);
+                setPreviewImage(data.profile_image_url ? `${API}/${data.profile_image_url}` : null);
             } catch (err) {
                 console.error('Failed to load user', err);
                 setError('Failed to load user data. Please try again.');
@@ -43,22 +59,62 @@ export default function EditProfile() {
         }
     }, [userID]);
 
-
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const previewUrl = URL.createObjectURL(file);
-            setPreviewImage(previewUrl);
-            setSelectedFile(file); // ยังไม่อัปโหลด แค่เก็บไว้ก่อน
+            processUploadedFile(file);
         }
     };
 
-    const removeImage = () => {
-        const DEFAULT_IMAGE_URL = 'https://ih1.redbubble.net/image.5659062584.9025/st,small,507x507-pad,600x600,f8f8f8.jpg';
-        setPreviewImage(DEFAULT_IMAGE_URL);
-        setProfileImage(DEFAULT_IMAGE_URL);
-        setUser(prev => prev ? { ...prev, profile_image_url: DEFAULT_IMAGE_URL } : prev);
+    const processUploadedFile = (file: File) => {
+        // Check file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            setError('Image size must be less than 5MB');
+            return;
+        }
 
+        // Check file type
+        if (!file.type.startsWith('image/')) {
+            setError('Please upload a valid image file');
+            return;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        setPreviewImage(previewUrl);
+        setSelectedFile(file);
+        setError(null);
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+
+        const file = e.dataTransfer.files[0];
+        if (file) {
+            processUploadedFile(file);
+        }
+    };
+
+    const triggerFileInput = () => {
+        fileInputRef.current?.click();
+    };
+
+    const removeImage = () => {
+        if (previewImage?.startsWith('blob:')) {
+            URL.revokeObjectURL(previewImage);
+        }
+        setPreviewImage(null);
+        setProfileImage(null);
+        setSelectedFile(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -72,22 +128,23 @@ export default function EditProfile() {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) throw new Error('Please enter a valid email address');
 
-            let profileImageUrl: string | null = previewImage;
+            let profileImageUrl: string | null = profileImage;
 
-            // ถ้ามีไฟล์ใหม่ ให้ upload ก่อน
+            // Upload new image if selected
             if (selectedFile) {
                 setIsUploading(true);
                 const uploadResult = await uploadProfileImage(Number(userID), selectedFile);
                 profileImageUrl = typeof uploadResult === 'string'
                     ? uploadResult
                     : (uploadResult as any).profile_image_url || null;
+                setIsUploading(false);
             }
 
             const updatedUser = {
                 name,
                 email,
                 bio,
-                profile_image_url: profileImageUrl ?? undefined, // อัปเดตพร้อมรูป (ถ้ามี)
+                profile_image_url: profileImageUrl ?? undefined,
             };
 
             await updateUser(Number(userID), updatedUser);
@@ -95,15 +152,15 @@ export default function EditProfile() {
             setSuccessMessage('Profile updated successfully!');
             setTimeout(() => {
                 navigate(`/profile/${userID}`);
-            }, 2000);
+            }, 1500);
         } catch (err) {
             if (err instanceof Error) setError(err.message);
             else setError('Failed to update profile. Please try again.');
         } finally {
             setIsSubmitting(false);
-            setIsUploading(false);
         }
     };
+
     useEffect(() => {
         return () => {
             if (previewImage?.startsWith('blob:')) {
@@ -118,7 +175,7 @@ export default function EditProfile() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Navigation Bar */}
+            {/* Navigation Bar - KFC Style */}
             <nav className="bg-black text-white shadow-lg sticky top-0 z-10">
                 <div className="max-w-7xl mx-auto px-4">
                     <div className="flex justify-between items-center h-16">
@@ -175,176 +232,215 @@ export default function EditProfile() {
                 )}
             </nav>
 
-            {/* Hero Banner */}
-            <div className="bg-black text-white py-4">
+            {/* Featured Banner - KFC Style */}
+            <div className="bg-red-600 text-white py-3">
                 <div className="max-w-7xl mx-auto px-4">
                     <div className="flex justify-center items-center gap-2">
-                        <Star size={18} className="text-yellow-400" />
-                        <p className="text-sm md:text-base font-medium">Update your Frytopia profile information</p>
-                        <Star size={18} className="text-yellow-400" />
+                        <Star size={16} className="text-yellow-400" />
+                        <p className="text-sm font-medium">Update your profile and stay legendary! 🍗</p>
+                        <Star size={16} className="text-yellow-400" />
                     </div>
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className="max-w-3xl mx-auto px-4 py-8">
-                <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
-                    {/* Header */}
-                    <div className="bg-red-600 py-4 px-6">
-                        <div className="flex items-center">
-                            <Link
-                                to={`/profile/${userID}`}
-                                className="flex items-center text-white hover:text-red-100 transition"
-                            >
-                                <ChevronLeft size={24} className="mr-1" />
-                                <span className="font-medium">Back to Profile</span>
-                            </Link>
-                            <h1 className="text-xl font-bold text-white ml-6">Edit Profile</h1>
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                {/* Back Button */}
+                <div className="mb-6">
+                    <Link
+                        to={`/frontend/profile/${userID}`}
+                        className="inline-flex items-center gap-2 text-gray-700 hover:text-red-600 transition font-medium"
+                    >
+                        <ChevronLeft size={20} />
+                        <span>Back to Profile</span>
+                    </Link>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-md overflow-hidden">
+                    {/* Header Banner */}
+                    <div className="bg-gradient-to-r from-red-700 to-red-500 h-24 relative">
+                        <div className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-black/30 to-transparent"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <h1 className="text-2xl font-bold text-white tracking-wide">Edit Your Profile</h1>
                         </div>
                     </div>
 
                     <div className="p-6 md:p-8">
+                        {/* Notifications */}
                         {error && (
-                            <div className="mb-6 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <X size={20} className="mt-0.5" />
-                                    </div>
-                                    <div className="ml-3">
-                                        <p className="text-sm">{error}</p>
-                                    </div>
+                            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg shadow-sm animate-fade-in">
+                                <div className="flex items-start">
+                                    <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
+                                    <p className="ml-3 text-sm">{error}</p>
                                 </div>
                             </div>
                         )}
 
                         {successMessage && (
-                            <div className="mb-6 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-sm">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <Star size={20} className="mt-0.5" />
-                                    </div>
-                                    <div className="ml-3">
-                                        <p className="text-sm">{successMessage}</p>
-                                    </div>
+                            <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg shadow-sm animate-fade-in">
+                                <div className="flex items-start">
+                                    <CheckCircle size={20} className="mt-0.5 flex-shrink-0" />
+                                    <p className="ml-3 text-sm">{successMessage}</p>
                                 </div>
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit}>
-                            {/* Profile Image Upload */}
-                            <div className="mb-8 flex flex-col items-center">
-                                <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-4 border-red-100 shadow-md bg-gray-100 mb-4 relative group">
-                                    {previewImage ? (
-                                        <img
-                                            src={previewImage}
-                                            alt="Profile Preview"
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                                            <UserIcon size={48} className="text-gray-400" />
-                                        </div>
-                                    )}
+                        <form onSubmit={handleSubmit} className="mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+                                {/* Profile Image Upload Section */}
+                                <div className="md:col-span-1">
+                                    <div className="flex flex-col items-center">
+                                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Profile Picture</h3>
 
-                                    {/* Hover Overlay */}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
-                                        <label className="cursor-pointer p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition">
-                                            <Camera size={24} />
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={handleImageUpload}
+                                        {/* Profile Image Container */}
+                                        <div
+                                            className={`w-40 h-40 rounded-full overflow-hidden border-4 ${isDragging ? 'border-red-400 bg-red-50' : 'border-red-100'} shadow-md mb-4 relative cursor-pointer transition-all duration-200`}
+                                            onClick={triggerFileInput}
+                                            onDragOver={handleDragOver}
+                                            onDragLeave={handleDragLeave}
+                                            onDrop={handleDrop}
+                                        >
+                                            {previewImage ? (
+                                                <img
+                                                    src={previewImage}
+                                                    alt="Profile Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 transition">
+                                                    <UserIcon size={40} className="text-gray-400 mb-2" />
+                                                    <p className="text-xs text-gray-500 text-center px-2">
+                                                        Click or drop image here
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Hover Overlay */}
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 flex items-center justify-center opacity-0 hover:opacity-100 transition duration-300">
+                                                <div className="bg-white p-2 rounded-full shadow-lg">
+                                                    <Camera size={24} className="text-red-600" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Hidden File Input */}
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleImageUpload}
+                                            disabled={isUploading}
+                                        />
+
+                                        {/* Image Actions */}
+                                        <div className="flex flex-col gap-2 w-full">
+                                            <button
+                                                type="button"
+                                                onClick={triggerFileInput}
+                                                className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2 shadow-sm"
                                                 disabled={isUploading}
-                                            />
-                                        </label>
+                                            >
+                                                <Upload size={16} />
+                                                <span>{isUploading ? 'Uploading...' : 'Choose Image'}</span>
+                                            </button>
+
+                                            {previewImage && (
+                                                <button
+                                                    type="button"
+                                                    onClick={removeImage}
+                                                    className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition flex items-center justify-center gap-2"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    <span>Remove</span>
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-3 text-xs text-gray-500 text-center">
+                                            <p>Recommended: Square image</p>
+                                            <p>Maximum size: 5MB</p>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col sm:flex-row gap-3">
+                                {/* Form Fields */}
+                                <div className="md:col-span-2">
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-6">Personal Information</h3>
 
+                                    <div className="space-y-6">
+                                        {/* Name */}
+                                        <div>
+                                            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Name <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="name"
+                                                value={name}
+                                                onChange={(e) => setName(e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-sm transition-all"
+                                                placeholder="Enter your name"
+                                                required
+                                            />
+                                        </div>
 
-                                    {previewImage && (
-                                        <button
-                                            type="button"
-                                            onClick={removeImage}
-                                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition flex items-center gap-2 shadow-sm"
-                                        >
-                                            <X size={16} />
-                                            <span>Remove Photo</span>
-                                        </button>
-                                    )}
+                                        {/* Email */}
+                                        <div>
+                                            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Email <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="email"
+                                                id="email"
+                                                value={email}
+                                                onChange={(e) => setEmail(e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-sm transition-all"
+                                                placeholder="Enter your email"
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Bio */}
+                                        <div>
+                                            <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Bio
+                                            </label>
+                                            <textarea
+                                                id="bio"
+                                                value={bio}
+                                                onChange={(e) => setBio(e.target.value)}
+                                                rows={5}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 shadow-sm transition-all resize-none"
+                                                placeholder="Tell us about yourself and your favorite fried chicken recipes..."
+                                            />
+                                            <p className="mt-1 text-sm text-gray-500">
+                                                {bio.length}/500 characters
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Form Fields */}
-                            <div className="space-y-6">
-                                {/* Name */}
-                                <div>
-                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="name"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 shadow-sm"
-                                        placeholder="Enter your name"
-                                        required
-                                    />
-                                </div>
-
-                                {/* Email */}
-                                <div>
-                                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Email <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="email"
-                                        id="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 shadow-sm"
-                                        placeholder="Enter your email"
-                                        required
-                                    />
-                                </div>
-
-                                {/* Bio */}
-                                <div>
-                                    <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Bio
-                                    </label>
-                                    <textarea
-                                        id="bio"
-                                        value={bio}
-                                        onChange={(e) => setBio(e.target.value)}
-                                        rows={4}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 shadow-sm resize-none"
-                                        placeholder="Tell us a bit about yourself and your favorite fried chicken..."
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Submit Button */}
-                            <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className={`px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 transition w-full sm:w-auto flex items-center justify-center shadow-sm ${isSubmitting ? 'opacity-75 cursor-not-allowed' : ''
-                                        }`}
-                                >
-                                    <Save size={18} className="mr-2" />
-                                    {isSubmitting ? 'Updating...' : 'Save Changes'}
-                                </button>
-
+                            {/* Submit Buttons */}
+                            <div className="mt-10 pt-6 border-t border-gray-200 flex flex-col sm:flex-row gap-4 justify-end">
                                 <Link
                                     to={`/profile/${userID}`}
-                                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition w-full sm:w-auto text-center shadow-sm"
+                                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition w-full sm:w-auto text-center flex items-center justify-center gap-2 font-medium shadow-sm"
                                 >
-                                    Cancel
+                                    <X size={18} />
+                                    <span>Cancel</span>
                                 </Link>
+                                            
+                                <button
+                                    type="submit"
+                                    onClick={handleSubmit}
+                                    disabled={isSubmitting}
+                                    className={`px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition w-full sm:w-auto flex items-center justify-center gap-2 font-medium shadow-md ${isSubmitting ? 'opacity-75 cursor-not-allowed' : ''}`}
+                                >
+                                    <Save size={18} />
+                                    <span>{isSubmitting ? 'Saving...' : 'Save Changes'}</span>
+                                </button>
                             </div>
                         </form>
                     </div>

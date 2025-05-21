@@ -274,7 +274,7 @@ app.post('/users/:userId/upload-profile-image', upload.single('profile_image'), 
     return res.status(400).json({ error: 'No image file uploaded' });
   }
 
-  const imageUrl = `http://localhost:${PORT}/profile_image/${req.file.filename}`;
+  const imageUrl = `/profile_image/${req.file.filename}`;
 
   try {
     const result = await client.query(

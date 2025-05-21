@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { BookOpen, Clock, ChevronRight, Edit, Trash2, Star, PlusCircle, AlertTriangle } from 'lucide-react';
 import { API } from '../api/userApi';
 import { useEffect, useState } from 'react';
+import { getRatingsByRecipeID } from '../api/ratingApi';
 
 interface RecipePreview {
   recipe_id: number;
@@ -24,6 +25,27 @@ interface DeleteConfirmationProps {
   onClose: () => void;
   onConfirm: () => void;
 }
+
+// utils/getAverageRating.ts
+export async function getAverageRating(recipeId: string): Promise<number> {
+  try {
+    const response = await getRatingsByRecipeID(recipeId);
+    const data = response.data;
+
+    if (!Array.isArray(data) || data.length === 0) return 0;  // return 0 แทน null
+
+    const scores: number[] = data.map((entry) => entry.score);
+    const sum = scores.reduce((acc, curr) => acc + curr, 0);
+    const avg = sum / scores.length;
+
+    return parseFloat(avg.toFixed(2));
+  } catch (error) {
+    console.error("Error fetching average rating:", error);
+    return 0;  // return 0 ในกรณี error ด้วย
+  }
+}
+
+
 
 // Delete Confirmation Popup Component
 const DeleteConfirmation = ({ isOpen, recipeName, onClose, onConfirm }: DeleteConfirmationProps) => {
@@ -75,7 +97,21 @@ const DeleteConfirmation = ({ isOpen, recipeName, onClose, onConfirm }: DeleteCo
 export default function MyRecipes({ recipes, isAdminLoggedIn }: MyRecipesProps) {
   const [recipesUser, setRecipesUser] = useState<RecipePreview[]>([]);
   const { userID } = useParams();
-  
+  const [averageRatings, setAverageRatings] = useState<Record<number, number>>({});
+
+  async function fetchRecipesAndRatings() {
+  const data = await getRecipes();
+  setRecipesUser(data);
+
+  const ratingsMap: Record<number, number> = {};
+  for (const recipe of data) {
+    const avg = await getAverageRating(recipe.recipe_id);
+    if (avg !== null) {
+      ratingsMap[recipe.recipe_id] = avg;
+    }
+  }
+  setAverageRatings(ratingsMap);
+}
   // State for delete confirmation popup
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     isOpen: false,
@@ -107,6 +143,7 @@ export default function MyRecipes({ recipes, isAdminLoggedIn }: MyRecipesProps) 
 
   useEffect(() => {
     fetchRecipes();
+    fetchRecipesAndRatings();
   }, []);
 
   // Open delete confirmation popup
@@ -217,7 +254,8 @@ export default function MyRecipes({ recipes, isAdminLoggedIn }: MyRecipesProps) 
                 <div className="absolute bottom-3 right-3">
                   <div className="flex items-center bg-black/70 text-white px-2 py-1 rounded-full text-xs">
                     <Star size={12} className="text-yellow-400 mr-1" />
-                    <span>{recipe.isFavorite ? '5.0' : '0.0'} / 5.0</span>
+                    <span>{averageRatings[recipe.recipe_id]?.toFixed(1) || '0.0'} / 5.0</span>
+
                   </div>
                 </div>
               </div>
@@ -250,7 +288,7 @@ export default function MyRecipes({ recipes, isAdminLoggedIn }: MyRecipesProps) 
                 </div>
               </div>
               <Link 
-                to={`/recipe/${recipe.recipe_id}`}
+                to={`/recipes/${recipe.recipe_id}`}
                 className="bg-red-600 text-white py-2 text-center cursor-pointer hover:bg-red-700 transition block"
               >
                 <div className="flex items-center justify-center gap-1">

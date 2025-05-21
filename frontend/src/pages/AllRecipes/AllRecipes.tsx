@@ -1,10 +1,11 @@
 import { useState, useRef, useLayoutEffect } from 'react';
-import { Heart, Clock, ChevronDown, Menu, X, Search, Filter, ArrowUpDown } from 'lucide-react';
+import { Heart, Clock, ChevronDown, Menu, X, Search, Filter, ArrowUpDown, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getAllRecipes } from '../../api/recipeApi';
 import type { Recipe } from '../../interfaces/IRecipes';
 import type { Favorite } from '../../interfaces/IFavorites';
 import { addFavorite, getFavorites, removeFavorite } from '../../api/favApi';
+import { getAverageRating } from '../../components/MyRecipes';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -18,6 +19,11 @@ export default function RecipesPage() {
   const footerRef = useRef<HTMLElement | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userID, setUserID] = useState<string | null>(null);
+  const [averageRatings, setAverageRatings] = useState<Record<number, number>>({});
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const recipesPerPage = 6;
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -71,11 +77,20 @@ export default function RecipesPage() {
       }));
 
       setRecipes(recipesWithFavorites);
+
+      const ratingsMap: Record<number, number> = {};
+      for (const recipe of recipes) {
+        const avg = await getAverageRating(recipe.recipe_id);
+        if (avg !== null) {
+          ratingsMap[recipe.recipe_id] = avg;
+        }
+      }
+      setAverageRatings(ratingsMap);
     } catch (err) {
       console.error('Failed to load recipes and favorites', err);
     }
-  };
-
+  }
+  
   useLayoutEffect(() => {
     const loginStatus = localStorage.getItem('isLogin');
     const storedUserID = localStorage.getItem('userID');
@@ -102,22 +117,22 @@ export default function RecipesPage() {
 
   const handleSearch = (e: SearchEvent) => {
     setSearchQuery(e.target.value);
+    setCurrentPage(1); // Reset to first page when search query changes
   };
-
 
   const handleSortChange = (option: string): void => {
     setSortBy(option);
 
-    // // Sort logic
+    // Sort logic
     let sortedRecipes: Recipe[] = [...recipes];
     if (option === 'newest') {
-      const sortedRecipes = recipes.sort((a: { recipe_id: number; }, b: { recipe_id: number; }) => b.recipe_id - a.recipe_id);
-      setRecipes(sortedRecipes);
+      sortedRecipes = recipes.sort((a: { recipe_id: number; }, b: { recipe_id: number; }) => b.recipe_id - a.recipe_id);
     } else if (option === 'cookTime') {
       sortedRecipes.sort((a, b) => a.cooking_time - b.cooking_time);
     }
 
     setRecipes(sortedRecipes);
+    setCurrentPage(1); // Reset to first page when sort option changes
   };
 
   const filteredRecipes = recipes.filter(recipe => {
@@ -128,6 +143,46 @@ export default function RecipesPage() {
     const matchesSearch = name.includes(search) || description.includes(search);
     return matchesSearch;
   });
+  
+  // Pagination logic
+  const indexOfLastRecipe = currentPage * recipesPerPage;
+  const indexOfFirstRecipe = indexOfLastRecipe - recipesPerPage;
+  const currentRecipes = filteredRecipes.slice(indexOfFirstRecipe, indexOfLastRecipe);
+  
+  // Calculate total pages
+  const totalPages = Math.ceil(filteredRecipes.length / recipesPerPage);
+  
+  // Handle page navigation
+  const paginate = (pageNumber: number) => {
+    // Don't go below 1 or above max pages
+    if (pageNumber < 1 || pageNumber > totalPages) return;
+    setCurrentPage(pageNumber);
+    // Scroll to top of results when page changes
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  // Generate page numbers for pagination
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxPagesToShow = 3;
+    
+    // If there are 3 or fewer pages, show all
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNumbers.push(i);
+      }
+      return pageNumbers;
+    }
+    
+    // Otherwise, show current page and adjacent pages
+    if (currentPage === 1) {
+      return [1, 2, 3];
+    } else if (currentPage === totalPages) {
+      return [totalPages - 2, totalPages - 1, totalPages];
+    } else {
+      return [currentPage - 1, currentPage, currentPage + 1];
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -189,8 +244,14 @@ export default function RecipesPage() {
               >
                 About
               </button>
-              <a href="/frontend/favorites" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-red-600 transition">Favorites</a>
-              <a href="/frontend/profile/1" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-red-600 transition">Profile</a>
+              {isLoggedIn ? (
+                <>
+                  <a href="/frontend/favorites" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-red-600 transition">Favorites</a>
+                  <a href={`/frontend/profile/${userID}`} className="block px-3 py-2 rounded-md text-base font-medium hover:bg-red-600 transition">Profile</a>
+                </>
+              ) : (
+                <a href="/frontend/login" className="block px-3 py-2 rounded-md text-base font-medium hover:bg-red-600 transition">Login</a>
+              )}
             </div>
           </div>
         )}
@@ -317,8 +378,8 @@ export default function RecipesPage() {
 
           {filteredRecipes.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredRecipes.map((recipe) => (
-                <div key={recipe.recipe_id} className="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition transform hover:-translate-y-1 border border-gray-200">
+              {currentRecipes.map((recipe) => (
+                <div key={recipe.recipe_id} className="bg-white rounded-xl overflow-hidden shadow-md hover:shadow-xl transition transform hover:-translate-y-1 border border-gray-200 flex flex-col">
                   <div className="h-48 relative">
                     <img
                       src={`${API}/${recipe.image_url}`}
@@ -329,9 +390,9 @@ export default function RecipesPage() {
                     <button
                       disabled={!isLoggedIn}
                       className={`absolute top-2 right-2 p-2 bg-white rounded-full shadow-md 
-                    ${recipe.isFavorite ? 'text-red-500' : 'text-gray-400'}
-                    ${!isLoggedIn ? 'opacity-50 cursor-not-allowed' : ''}
-                  `}
+                        ${recipe.isFavorite ? 'text-red-500' : 'text-gray-400'}
+                        ${!isLoggedIn ? 'opacity-50 cursor-not-allowed' : ''}
+                      `}
                       onClick={() => {
                         if (!isLoggedIn) return; // ป้องกันกดถ้ายังไม่ได้ login
                         if (recipe.isFavorite) {
@@ -348,20 +409,52 @@ export default function RecipesPage() {
                       />
                     </button>
                   </div>
-                  <div className="p-4">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-1">{recipe.recipe_name}</h3>
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">{recipe.description}</p>
 
-                    <div className="flex items-center justify-between text-sm mb-3">
-                      <div className="flex items-center text-gray-500">
-                        <Clock size={16} className="mr-1" />
+                  <div className="p-4 flex-grow flex flex-col">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-1">
+                        {recipe.recipe_name}
+                      </h3>
+                      <div className="group relative">
+                        <p className="text-gray-600 mb-4 text-sm line-clamp-1 cursor-pointer hover:text-gray-800">
+                          {recipe.description}
+                        </p>
+                        <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-300 absolute z-10 bg-white text-gray-700 p-2 rounded-md shadow-lg border border-gray-200 w-60 text-sm left-0">
+                          {recipe.description}
+                        </div>
+                      </div>
+                      <div className='h-6 mb-2'>
+                        {averageRatings[recipe.recipe_id] !== undefined && (
+                          <div className="flex items-center gap-1 text-yellow-500 text-sm">
+                            <div className="flex">
+                              {Array.from({ length: 5 }, (_, i) => (
+                                <Star
+                                  key={i}
+                                  size={16}
+                                  fill={i < Math.round(averageRatings[recipe.recipe_id]) ? "#FACC15" : "none"}
+                                  className="text-yellow-400"
+                                />
+                              ))}
+                            </div>
+                            <span className="text-gray-700 ml-1">
+                              {averageRatings[recipe.recipe_id].toFixed(1)} / 5.0
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-sm mt-auto">
+                      <div className="flex items-center gap-1 text-gray-500">
+                        <Clock size={16} />
                         <span>{`${recipe.cooking_time} minute`}</span>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(recipe.difficulty)}`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDifficultyColor(recipe.difficulty)}`}>
                         {recipe.difficulty}
                       </span>
                     </div>
                   </div>
+
                   <Link to={`/recipes/${recipe.recipe_id}`} onClick={() => localStorage.setItem('recipeID', String(recipe.recipe_id))}>
                     <div className="bg-red-600 text-white py-2 text-center cursor-pointer hover:bg-red-700 transition">
                       <span className="text-sm font-medium">View Recipe</span>
@@ -388,11 +481,51 @@ export default function RecipesPage() {
               </button>
             </div>
           )}
+          
+          {/* Pagination Section */}
+          {filteredRecipes.length > recipesPerPage && (
+            <div className="mt-8 flex justify-center">
+              <nav className="inline-flex rounded-xl overflow-hidden shadow">
+                <button 
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className={`px-4 py-2 border-r border-gray-300 bg-white ${currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
+                >
+                  Previous
+                </button>
+                
+                {getPageNumbers().map(number => (
+                  <button 
+                    key={number} 
+                    onClick={() => paginate(number)}
+                    className={`px-4 py-2 border-r border-gray-300 ${currentPage === number ? 'bg-red-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    {number}
+                  </button>
+                ))}
+                
+                <button 
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className={`px-4 py-2 bg-white ${currentPage === totalPages ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
+                >
+                  Next
+                </button>
+              </nav>
+            </div>
+          )}
+          
+          {/* Showing recipes count */}
+          {filteredRecipes.length > 0 && (
+            <div className="mt-4 text-center text-gray-500 text-sm">
+              Showing {indexOfFirstRecipe + 1}-{Math.min(indexOfLastRecipe, filteredRecipes.length)} of {filteredRecipes.length} recipes
+            </div>
+          )}
         </div>
-
       </div>
+      
       {/* Footer */}
-      <footer ref={footerRef} className="bg-black mt-12  border-t border-gray-800 text-gray-500 text-center text-sm pt-12 pb-6">
+      <footer ref={footerRef} className="bg-black mt-12 border-t border-gray-800 text-gray-500 text-center text-sm pt-12 pb-6">
         <p>"Fried to perfection, loved forever. ❤️🍗" — Frytopia</p>
       </footer>
     </div>

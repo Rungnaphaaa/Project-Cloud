@@ -6,6 +6,7 @@ import { getAllRecipes } from '../../api/recipeApi';
 import type { Recipe } from '../../interfaces/IRecipes';
 import { addFavorite, getFavorites, removeFavorite } from '../../api/favApi';
 import type { Favorite } from '../../interfaces/IFavorites';
+import { getAverageRating } from '../../components/MyRecipes';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -16,6 +17,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userID, setUserID] = useState<string | null>(null);
   const footerRef = useRef<HTMLDivElement>(null);
+  const [averageRatings, setAverageRatings] = useState<Record<number, number>>({});
 
   const GetRecipesAndFavorites = async () => {
     try {
@@ -35,10 +37,20 @@ export default function Home() {
       }));
 
       setRecipes(recipesWithFavorites);
+
+      const ratingsMap: Record<number, number> = {};
+      for (const recipe of recipes) {
+        const avg = await getAverageRating(recipe.recipe_id);
+        if (avg !== null) {
+          ratingsMap[recipe.recipe_id] = avg;
+        }
+      }
+      setAverageRatings(ratingsMap);
     } catch (err) {
       console.error('Failed to load recipes and favorites', err);
     }
   };
+
 
   const handleCreateFavorite = async (recipeId: number) => {
     try {
@@ -249,6 +261,22 @@ export default function Home() {
                   <p className="text-gray-600 mb-4 text-sm line-clamp-2">
                     {recipe.description}
                   </p>
+                  {averageRatings[recipe.recipe_id] !== undefined && (
+                    <div className="flex items-center gap-1 text-yellow-500 text-sm mb-2">
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <Star
+                          key={i}
+                          size={16}
+                          fill={i < Math.round(averageRatings[recipe.recipe_id]) ? "#FACC15" : "none"}
+                          className="text-yellow-400"
+                        />
+                      ))}
+                      <span className="text-gray-700 ml-1">
+                        {averageRatings[recipe.recipe_id].toFixed(1)} / 5.0
+                      </span>
+                    </div>
+                  )}
+
                 </div>
                 <div className="flex items-center justify-between text-sm mt-auto">
                   <div className="flex items-center gap-1 text-gray-500">
